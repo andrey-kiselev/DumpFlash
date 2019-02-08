@@ -141,7 +141,8 @@ class NandIO:
 		self.UseAnsi=False
 		self.Ftdi = Ftdi()
 		try:
-			self.Ftdi.open(0x0403,0x6010,interface=1)
+			self.Ftdi.open(0x0403,0x6010) #,interface=1)
+			print("FTDI Opened")
 		except:
 			traceback.print_exc(file=sys.stdout)
 			return
@@ -154,7 +155,7 @@ class NandIO:
 		else:
 			self.Ftdi.write_data(Array('B', [Ftdi.DISABLE_CLK_DIV5]))
 
-		self.Ftdi.set_latency_timer(1)
+		self.Ftdi.set_latency_timer(12)
 		self.Ftdi.purge_buffers()
 		self.Ftdi.write_data(Array('B', [Ftdi.SET_BITS_HIGH,0x0,0x1]))
 		self.WaitReady()
@@ -174,7 +175,7 @@ class NandIO:
 				return
 			else:
 				if self.Debug>0:
-					print 'Not Ready', data
+					print(('Not Ready', data))
 		return
 
 	def nandRead(self,cl,al,count):
@@ -208,12 +209,18 @@ class NandIO:
 			cmd_type|=self.ADR_AL
 		if not self.WriteProtect:
 			cmd_type|=self.ADR_WP
-
-		cmds+=[Ftdi.WRITE_EXTENDED, cmd_type, 0, ord(data[0])]
+		try:
+			cmds+=[Ftdi.WRITE_EXTENDED, cmd_type, 0, ord(data[0])]
+		except:
+			cmds+=[Ftdi.WRITE_EXTENDED, cmd_type, 0, (data[0])]
 		for i in range(1,len(data),1):
 			#if i == 256:
 			#	cmds+=[Ftdi.WRITE_SHORT, 0, ord(data[i])]
-			cmds+=[Ftdi.WRITE_SHORT, 0, ord(data[i])]
+			try:
+				cmds+=[Ftdi.WRITE_SHORT, 0, ord(data[i])]
+			except:
+				cmds+=[Ftdi.WRITE_SHORT, 0, (data[i])]
+			
 		self.Ftdi.write_data(Array('B', cmds))
 
 	def sendCmd(self,cmd):
@@ -243,9 +250,13 @@ class NandIO:
 		return self.Slow
 
 	def GetID(self):
+		# for some reason, reset needed...
+		self.sendCmd(self.NAND_CMD_RESET)
+		time.sleep(1)
 		self.sendCmd(self.NAND_CMD_READID)
 		self.sendAddr(0,1)
 		id=self.readFlashData(8)
+		print(id)
 
 		self.Identified=False
 		self.Name=''
@@ -285,7 +296,7 @@ class NandIO:
 			else:
 				onfi=False
 
-	   	if id[0]==0x98:
+		if id[0]==0x98:
 			self.Manufacturer="Toshiba"
 		elif id[0]==0xec:
 			self.Manufacturer="Samsung"
@@ -373,11 +384,11 @@ class NandIO:
 			self.OOBSize = self.PageSize / 32
 
 		if self.PageSize>0:
-			self.PageCount=(self.ChipSizeMB*1024*1024)/self.PageSize
+			self.PageCount=int((self.ChipSizeMB*1024*1024)/self.PageSize)
 		self.RawPageSize=self.PageSize+self.OOBSize
 		self.BlockSize=self.EraseSize
-		self.BlockCount=(self.ChipSizeMB*1024*1024)/self.BlockSize
-		self.PagePerBlock=self.PageCount/self.BlockCount
+		self.BlockCount=int((self.ChipSizeMB*1024*1024)/self.BlockSize)
+		self.PagePerBlock=int(self.PageCount/self.BlockCount)
 		self.RawBlockSize=self.PagePerBlock*(self.PageSize + self.OOBSize)
 		return True
 
@@ -387,21 +398,21 @@ class NandIO:
         	return bits+1
 
 	def DumpInfo(self):
-		print 'Full ID:\t',self.IDString
-		print 'ID Length:\t',self.IDLength
-		print 'Name:\t\t',self.Name
-		print 'ID:\t\t0x%x' % self.ID
-		print 'Page size:\t0x%x' % self.PageSize
-		print 'OOB size:\t0x%x' % self.OOBSize
-		print 'Page count:\t0x%x' % self.PageCount
-		print 'Size:\t\t0x%x' % self.ChipSizeMB
-		print 'Erase size:\t0x%x' % self.EraseSize
-		print 'Block count:\t', self.BlockCount
-		print 'Options:\t',self.Options
-		print 'Address cycle:\t',self.AddrCycles
-		print 'Bits per Cell:\t',self.BitsPerCell
-		print 'Manufacturer:\t',self.Manufacturer
-		print ''
+		print(('Full ID:\t',self.IDString))
+		print(('ID Length:\t',self.IDLength))
+		print(('Name:\t\t',self.Name))
+		print(('ID:\t\t0x%x' % self.ID))
+		print(('Page size:\t0x%x' % self.PageSize))
+		print(('OOB size:\t0x%x' % self.OOBSize))
+		print(('Page count:\t0x%x' % int(self.PageCount)))
+		print(('Size:\t\t0x%x' % self.ChipSizeMB))
+		print(('Erase size:\t0x%x' % self.EraseSize))
+		print(('Block count:\t' + str(self.BlockCount)))
+		print(('Options:\t' + str(self.Options)))
+		print(('Address cycle:\t' + str(self.AddrCycles)))
+		print(('Bits per Cell:\t' + str(self.BitsPerCell)))
+		print(('Manufacturer:\t' + str(self.Manufacturer)))
+		print('')
 
 	def CheckBadBlocks(self):
 		bad_blocks={}
@@ -422,17 +433,17 @@ class NandIO:
 				oob=self.ReadOOB(page+pageoff)
 
 				if oob[5]!='\xff':
-					print 'Bad block found:', block
+					print(('Bad block found:', block))
 					bad_blocks[page]=1
 					break
-		print 'Checked %d blocks and found %d bad blocks' % ( block+1, len(bad_blocks))
+		print(('Checked %d blocks and found %d bad blocks' % ( block+1, len(bad_blocks))))
 		return bad_blocks
 
 	def ReadOOB(self,pageno):
 		bytes=[]
 		if self.Options&self.LP_Options:
 			self.sendCmd(self.NAND_CMD_READ0)
-			self.sendAddr((pageno<<16L),self.AddrCycles)
+			self.sendAddr((pageno<<16),self.AddrCycles)
 			self.sendCmd(self.NAND_CMD_READSTART)
 			self.WaitReady()
 			bytes += self.readFlashData(self.OOBSize)
@@ -523,7 +534,7 @@ class NandIO:
 		data=''
 
 		if bad_block and not raw_mode:
-			print '\nSkipping bad block at %d' % (pageno/self.PagePerBlock)
+			print(('\nSkipping bad block at %d' % (pageno/self.PagePerBlock)))
 		else:
 			for ch in page:
 				data+=chr(ch)
@@ -564,7 +575,7 @@ class NandIO:
 				self.sendCmd(self.NAND_CMD_PAGEPROG)
 				err=self.Status()
 				if err&self.NAND_STATUS_FAIL:
-					print 'Failed to write 1st half of ', pageno, err
+					print(('Failed to write 1st half of ', pageno, err))
 					continue
 				break
 
@@ -578,7 +589,7 @@ class NandIO:
 				self.sendCmd(self.NAND_CMD_PAGEPROG)
 				err=self.Status()
 				if err&self.NAND_STATUS_FAIL:
-					print 'Failed to write 2nd half of ', pageno, err
+					print(('Failed to write 2nd half of ', pageno, err))
 					continue
 				break
 
@@ -592,7 +603,7 @@ class NandIO:
 				self.sendCmd(self.NAND_CMD_PAGEPROG)
 				err=self.Status()
 				if err&self.NAND_STATUS_FAIL:
-					print 'Failed to write OOB of ', pageno, err
+					print(('Failed to write OOB of ', pageno, err))
 					continue
 				break
 
@@ -607,95 +618,95 @@ class NandIO:
 			page+=1
 
 	def WritePages(self,filename,offset=0,start_page=-1,end_page=-1,add_oob=False,add_jffs2_eraser_marker=False,raw_mode=False):
-		fd=open(filename,'rb')
-		fd.seek(offset)
-		data=fd.read()
+		with open(filename, "rb") as fd:
+			fd.seek(offset)
+			data=fd.read()
 
-		if start_page==-1:
-			start_page=0
+			if start_page==-1:
+				start_page=0
 
-		if end_page==-1:
-			end_page=self.PageCount-1
+			if end_page==-1:
+				end_page=self.PageCount-1
 
-		end_block=end_page/self.PagePerBlock
+			end_block=int(end_page/self.PagePerBlock)
 
-		if end_page%self.PagePerBlock>0:
-			end_block+=1
+			if end_page%self.PagePerBlock>0:
+				end_block+=1
 
-		start = time.time()
-		ecc=ECC()
+			start = time.time()
+			ecc=ECC()
 
-		page=start_page
-		block=page/self.PagePerBlock
-		current_data_offset=0
-		length=0
+			page=start_page
+			block=int(page/self.PagePerBlock)
+			current_data_offset=0
+			length=0
 
-		while page<=end_page and current_data_offset<len(data) and block<self.BlockCount:
-			oob_postfix='\xFF' * 13
-			if page%self.PagePerBlock == 0:
+			while page<=end_page and current_data_offset<len(data) and block<self.BlockCount:
+				oob_postfix='\xFF' * 13
+				if page%self.PagePerBlock == 0:
 
-				if not raw_mode:
-					bad_block_found=False
-					for pageoff in range(0,2,1):
-						oob=self.ReadOOB(page+pageoff)
+					if not raw_mode:
+						bad_block_found=False
+						for pageoff in range(0,2,1):
+							oob=self.ReadOOB(page+pageoff)
 
-						if oob[5]!='\xff':
-							bad_block_found=True
-							break
+							if oob[5]!='\xff':
+								bad_block_found=True
+								break
 
-					if bad_block_found:
-						print '\nSkipping bad block at ', block
-						page+=self.PagePerBlock
-						block+=1
-						continue
+						if bad_block_found:
+							print(('\nSkipping bad block at ', block))
+							page+=self.PagePerBlock
+							block+=1
+							continue
 
-				if add_jffs2_eraser_marker:
-					oob_postfix="\xFF\xFF\xFF\xFF\xFF\x85\x19\x03\x20\x08\x00\x00\x00"
+					if add_jffs2_eraser_marker:
+						oob_postfix="\xFF\xFF\xFF\xFF\xFF\x85\x19\x03\x20\x08\x00\x00\x00"
 
-				self.EraseBlockByPage(page)
+					self.EraseBlockByPage(page)
 
-			if add_oob:
-				orig_page_data=data[current_data_offset:current_data_offset+self.PageSize]
-				current_data_offset+=self.PageSize
-				length+=len(orig_page_data)
-				orig_page_data+=(self.PageSize-len(orig_page_data))*'\x00'
-				import copy
-				(ecc0, ecc1, ecc2) = ecc.CalcECC(orig_page_data)
+				if add_oob:
+					orig_page_data=data[current_data_offset:current_data_offset+self.PageSize]
+					current_data_offset+=self.PageSize
+					length+=len(orig_page_data)
+					orig_page_data+=(self.PageSize-len(orig_page_data))*'\x00'
+					import copy
+					(ecc0, ecc1, ecc2) = ecc.CalcECC(orig_page_data)
 
-				oob=struct.pack('BBB',ecc0,ecc1,ecc2) + oob_postfix
-				page_data=orig_page_data+oob
-			else:
-				page_data=data[current_data_offset:current_data_offset+self.RawPageSize]
-				current_data_offset+=self.RawPageSize
-				length+=len(page_data)
-
-			if len(page_data)!=self.RawPageSize:
-				print 'Not enough source data'
-				break
-
-			current = time.time()
-
-			if end_page==start_page:
-				progress=100
-			else:
-				progress=(page-start_page) * 100 / (end_page-start_page)
-
-			lapsed_time=current-start
-
-			if lapsed_time>0:
-				if self.UseAnsi:
-					sys.stdout.write('Writing %d%% Page: %d/%d Block: %d/%d Speed: %d bytes/s\n\033[A' % (progress, page, end_page, block, end_block, length/lapsed_time))
+					oob=struct.pack('BBB',ecc0,ecc1,ecc2) + oob_postfix
+					page_data=orig_page_data+oob
 				else:
-					sys.stdout.write('Writing %d%% Page: %d/%d Block: %d/%d Speed: %d bytes/s\n' % (progress, page, end_page, block, end_block, length/lapsed_time))
-			self.WritePage(page,page_data)
+					page_data=data[current_data_offset:current_data_offset+self.RawPageSize]
+					current_data_offset+=self.RawPageSize
+					length+=len(page_data)
 
-			if page%self.PagePerBlock == 0:
-				block=page/self.PagePerBlock
-			page+=1
+				if len(page_data)!=self.RawPageSize:
+					print('Not enough source data')
+					break
 
-		fd.close()
+				current = time.time()
 
-		print '\nWritten %x bytes / %x byte' % (length, len(data))
+				if end_page==start_page:
+					progress=100
+				else:
+					progress=(page-start_page) * 100 / (end_page-start_page)
+
+				lapsed_time=current-start
+
+				if lapsed_time>0:
+					if self.UseAnsi:
+						sys.stdout.write('Writing %d%% Page: %d/%d Block: %d/%d Speed: %d bytes/s\n\033[A' % (progress, page, end_page, block, end_block, length/lapsed_time))
+					else:
+						sys.stdout.write('Writing %d%% Page: %d/%d Block: %d/%d Speed: %d bytes/s\n' % (progress, page, end_page, block, end_block, length/lapsed_time))
+				self.WritePage(page,page_data)
+
+				if page%self.PagePerBlock == 0:
+					block=page/self.PagePerBlock
+				page+=1
+
+			fd.close()
+
+			print(('\nWritten %x bytes / %x byte' % (length, len(data))))
 
 	def Erase(self):
 		block=0
@@ -704,7 +715,7 @@ class NandIO:
 			block+=1
 
 	def EraseBlock(self,start_block, end_block):
-		print 'Erasing Block: 0x%x ~ 0x%x' % (start_block, end_block)
+		print(('Erasing Block: 0x%x ~ 0x%x' % (start_block, end_block)))
 		for block in range(start_block, end_block+1, 1):
-			print "Erasing block", block
+			print(("Erasing block", block))
 			self.EraseBlockByPage(block * self.PagePerBlock)
