@@ -62,6 +62,9 @@ if options.pages!=None:
 	if len(options.pages)>1:
 		end_page=options.pages[1]
 
+if options.filename:
+	print("Working with source file: " + options.filename)
+
 flash_util=FlashUtil(options.filename,options.page_size, options.oob_size, options.pages_per_block,options.slow)
 
 if not flash_util.IsInitialized():
@@ -155,6 +158,7 @@ if options.write:
 		flash_util.io.WritePages(filename, options.offset, start_page, end_page, add_oob, add_jffs2_eraser_marker=add_jffs2_eraser_marker, raw_mode=options.raw_mode)
 
 if options.erase:
+	flash_util.io.DumpInfo()
 	if options.blocks!=None:
 		start=options.blocks[0]
 		end=options.blocks[1]

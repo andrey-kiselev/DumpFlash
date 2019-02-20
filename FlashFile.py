@@ -1,6 +1,7 @@
 import pprint
 import struct
 from ECC import *
+import time
 
 class FlashFile:	
 	def __init__(self,filename, page_size=0x200, oob_size=0x10, page_per_block=0x20):
@@ -24,9 +25,19 @@ class FlashFile:
 		self.PagePerBlock=page_per_block
 		self.BlockSize=self.PageSize * self.PagePerBlock
 		self.RawBlockSize=self.RawPageSize * self.PagePerBlock
-		self.PageCount=(self.FileSize)/self.PageSize
-		self.BlockCount = self.PageCount/self.PagePerBlock
+		self.PageCount=int((self.FileSize)/self.PageSize)
+		self.BlockCount = int(self.PageCount/self.PagePerBlock)
 
+		print(('PageSize: 0x%x' % self.PageSize))
+		print(('OOBSize: 0x%x' % self.OOBSize))
+		print(('PagePerBlock: 0x%x' % self.PagePerBlock))
+		print(('BlockSize: 0x%x' % self.BlockSize))
+		print(('RawPageSize: 0x%x' % self.RawPageSize))
+		print(('PageCount: 0x%x' % self.PageCount))
+		print(('FileSize: 0x%x' % self.FileSize))
+		print('')
+
+	def DumpInfo(self):
 		print(('PageSize: 0x%x' % self.PageSize))
 		print(('OOBSize: 0x%x' % self.OOBSize))
 		print(('PagePerBlock: 0x%x' % self.PagePerBlock))

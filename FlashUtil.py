@@ -16,6 +16,7 @@ class FlashUtil:
 		if filename:
 			self.io = FlashFile(filename, page_size, oob_size, page_per_block)
 		else:
+			print("Initializing NAND IO...")
 			self.io = NandIO(slow)
 			
 	def IsInitialized(self):
@@ -65,10 +66,15 @@ class FlashUtil:
 	
 			count+=1
 			body = data[0:self.io.PageSize]
-			oob_ecc0 = ord(data[self.io.PageSize])
-			oob_ecc1 = ord(data[self.io.PageSize+1])
-			oob_ecc2 = ord(data[self.io.PageSize+2])
-		
+			try:
+				oob_ecc0 = ord(data[self.io.PageSize])
+				oob_ecc1 = ord(data[self.io.PageSize+1])
+				oob_ecc2 = ord(data[self.io.PageSize+2])
+			except:
+				oob_ecc0 = (data[self.io.PageSize])
+				oob_ecc1 = (data[self.io.PageSize+1])
+				oob_ecc2 = (data[self.io.PageSize+2])
+			
 			if (oob_ecc0==0xff and oob_ecc1==0xff and oob_ecc2==0xff) or (oob_ecc0==0x00 and oob_ecc1==0x00 and oob_ecc2==0x00):
 				continue
 		
@@ -117,7 +123,7 @@ class FlashUtil:
 
 			if bad_block_byte == '\xff':
 				return self.CLEAN_BLOCK
-			
+		return self.CLEAN_BLOCK
 		return self.BAD_BLOCK
 
 	def CheckBadBlocks(self):
@@ -172,7 +178,6 @@ class FlashUtil:
 		for page in range(start_page,end_page,1):
 			print(('page:', page))
 			data=self.io.ReadPage(page,remove_oob)
-			
 			print(('data: %x' % len(data)))
 
 			if filename:
@@ -184,7 +189,7 @@ class FlashUtil:
 				else:
 					#print(str.encode(data[0:40]))
 					#return
-					fd.write(bytes(data, "utf8"))
+					fd.write(bytes(data))
 			else:
 				whole_data+=data
 			
@@ -272,7 +277,7 @@ class FlashUtil:
 			return whole_data[0:maximum]
 		return whole_data
 
-	def AddOOB(self,filename, output_filename, jffs2=False):
+	def AddOOB(self,filename, output_filename, jffs2=True):
 		fd=open(filename,'rb')
 		wfd=open(output_filename,"wb")
 
@@ -287,12 +292,16 @@ class FlashUtil:
 
 			(ecc0, ecc1, ecc2) = ecc.CalcECC(page)
 
-			oob_postfix='\xFF' * 13
+			oob_postfix=b"\xFF" * 13
 
 			if current_output_size% self.io.BlockSize==0:
 				if jffs2 and current_block_number%2==0:
-					oob_postfix="\xFF\xFF\xFF\xFF\xFF\x85\x19\x03\x20\x08\x00\x00\x00"
+					oob_postfix=b"\xFF\xFF\xFF\xFF\xFF\x85\x19\x03\x20\x08\x00\x00\x00"
 				current_block_number+=1
+
+			#print(page)
+			print(struct.pack('BBB',ecc0,ecc1,ecc2) + oob_postfix)
+			#print(oob_postfix)
 
 			data=page + struct.pack('BBB',ecc0,ecc1,ecc2) + oob_postfix
 			wfd.write(data)
@@ -331,15 +340,18 @@ class FlashUtil:
 
 		wfd=open(output_filename,"wb")
 
-		start_block = start / self.io.RawBlockSize
+		start_block = int(start / self.io.RawBlockSize)
 		start_block_offset = start % self.io.RawBlockSize
-		start_page = start_block_offset / self.io.RawPageSize
+		start_page = int(start_block_offset / self.io.RawPageSize)
 		start_page_offset = start_block_offset % self.io.RawPageSize
 
-		end_block = end / self.io.RawBlockSize
+		end_block = int(end / self.io.RawBlockSize)
 		end_block_offset = end % self.io.RawBlockSize
-		end_page = end_block_offset / self.io.RawPageSize
+		end_page = int(end_block_offset / self.io.RawPageSize)
 		end_page_offset = end_block_offset % self.io.RawPageSize
+
+		print(start_block)
+		print(end_block)
 
 		print(('Dumping blocks (Block: 0x%x Offset: 0x%x ~  Block: 0x%x Offset: 0x%x)' % (start_block, start_block_offset, end_block, end_block_offset)))
 		print(('0x%x - 0x%x' % (start,end)))
@@ -351,9 +363,9 @@ class FlashUtil:
 				current_start_page=0
 				current_end_page=self.io.PagePerBlock
 
-				if block==start_Block:
+				if block==start_block:
 					current_start_page=start_page
-				elif block==end_Block:
+				elif block==end_block:
 					current_end_page=end_page+1
 
 				for page in range(current_start_page,current_end_page,1):
