@@ -13,6 +13,7 @@ parser.add_option("-w", action="store_true", dest="write", default=False, help="
 
 parser.add_option("-e", action="store_true", dest="erase", default=False, help="Erase")
 parser.add_option("-B", action="store_true", dest="check_bad_blocks", default=False, help="Check bad blocks")
+parser.add_option("-T", action="store_true", dest="test_bad_blocks", default=False, help="Test bad blocks")
 parser.add_option("-R", action="store_true", dest="raw_mode", default=False, help="Raw mode - skip bad block before reading/writing")
 parser.add_option("-c", action="store_true", dest="check_ecc", default=False, help="Check ECC")
 parser.add_option("-O", action="store_true", dest="add_oob", default=False, help="Add OOB to the source")
@@ -168,6 +169,9 @@ if options.erase:
 
 if options.check_bad_blocks:
 	flash_util.CheckBadBlocks()
+
+if options.test_bad_blocks:
+	flash_util.TestBadBlocks()
 
 if options.check_ecc:
 	flash_util.CheckECC()

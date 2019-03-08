@@ -4,6 +4,7 @@ import time
 import sys
 import pprint
 import traceback
+import collections
 from pyftdi.ftdi import *
 from DumpUBoot import *
 from ECC import *
@@ -120,6 +121,9 @@ class NandIO:
 		["NAND 64GiB 3,3V 8-bit",	0x3E, 0, 65536, 0, LP_Options, 6],
 
 		#["NAND 4MiB 3,3V 8-bit",	0xd5, 512, 4, 0x2000, 0, 3]
+
+		#(self.Name,self.ID,self.PageSize,self.ChipSizeMB,self.EraseSize,self.Options,self.AddrCycles)
+		["NAND 4096Mb ???V 8-bit", 0x68, 0, 512, 0, LP_Options, 5]
 	]
 
 	Debug=0
@@ -175,10 +179,11 @@ class NandIO:
 		while 1:
 			self.Ftdi.write_data(Array('B', [Ftdi.GET_BITS_HIGH]))
 			data = self.Ftdi.read_data_bytes(1)
-			#print(bin(data[0]))
-			if data[0]&2==0x2:
-				#print("Ready")
-				return
+			#print(data)
+			if isinstance(data, Array):
+				if data[0]&2==0x2:
+					#print("Ready")
+					return
 			#else:
 			#	print(('Not Ready', data))
 
@@ -204,6 +209,12 @@ class NandIO:
 			data = self.Ftdi.read_data_bytes(count)
 		return data.tolist()
 
+	'''
+	Write data through FTDI interface.
+	cl - command latch
+	al - address latch
+	data - should be an array
+	'''
 	def nandWrite(self,cl,al,data):
 		cmds=[]
 		cmd_type=0
@@ -213,35 +224,31 @@ class NandIO:
 			cmd_type|=self.ADR_AL
 		if not self.WriteProtect:
 			cmd_type|=self.ADR_WP
-		try:
-			cmds+=[Ftdi.WRITE_EXTENDED, cmd_type, 0, ord(data[0])]
-		except:
-			cmds+=[Ftdi.WRITE_EXTENDED, cmd_type, 0, (data[0])]
+		cmds+=[Ftdi.WRITE_EXTENDED, cmd_type, 0, data[0]]
 		for i in range(1,len(data),1):
-			#if i == 256:
-			#	cmds+=[Ftdi.WRITE_SHORT, 0, ord(data[i])]
-			try:
-				cmds+=[Ftdi.WRITE_SHORT, 0, ord(data[i])]
-			except:
-				cmds+=[Ftdi.WRITE_SHORT, 0, (data[i])]
-			
+			cmds+=[Ftdi.WRITE_SHORT, 0, (data[i])]
 		self.Ftdi.write_data(Array('B', cmds))
 
 	def sendCmd(self,cmd):
-		#print("Sending: " + hex(cmd))
-		self.nandWrite(1,0,chr(cmd))
+		#print("Command " + hex(cmd))
+		self.nandWrite(1,0,[cmd])
 
 	def sendAddr(self,addr,count):
-		data=''
+		data=bytearray()
 		for i in range(0,count,1):
-			data += chr(addr & 0xff)
+			data.append(addr & 0xff)
 			addr=addr>>8
 		self.nandWrite(0,1,data)
 
 	def Reset(self):
+		print("Resetting... ", end='', flush=True)
 		self.sendCmd(0xff)
+		now = time.time()
 		while not ( self.Status()==0x60 ):
-			pass
+			if (time.time() > now + 5):
+				print("Timeout! Status: " + str(hex(self.Status())))
+				return
+		print("Done")
 
 	def Status(self):
 		self.sendCmd(0x70)
@@ -283,6 +290,10 @@ class NandIO:
 	def readFlashData(self,count):
 		return self.nandRead(0,0,count)
 
+	'''
+	write data bytes to nand
+	data - bytearray
+	'''
 	def writeData(self,data):
 		return self.nandWrite(0,0,data)
 
@@ -294,7 +305,7 @@ class NandIO:
 		self.sendCmd(self.NAND_CMD_READID)
 		self.sendAddr(0,1)
 		id=self.readFlashData(8)
-		#print(id)
+		print(id)
 
 		self.Identified=False
 		self.Name=''
@@ -311,8 +322,13 @@ class NandIO:
 				(self.Name,self.ID,self.PageSize,self.ChipSizeMB,self.EraseSize,self.Options,self.AddrCycles)=device_description
 				self.Identified=True
 				break
+		
+		if ((not self.Identified) and (not id[1] == 0)):
+			print("DEVICE NOT IN DB")
+			self.Identified = True
 				
 		if not self.Identified:
+			print("NULL DEVICE")
 			return
 
 		#Check ONFI
@@ -497,17 +513,16 @@ class NandIO:
 			self.WaitReady()
 			bytes+=self.readFlashData(self.OOBSize)
 
-		data=''
-
-		for ch in bytes:
-			data+=chr(ch)
-		return data
+		#data=''
+		#for ch in bytes:
+		#	data+=chr(ch)
+		return bytes
 
 	def ReadPage(self,pageno,remove_oob=False):
 		bytes=[]
 
 		if self.Options&self.LP_Options:
-			print("READING HERE")
+			#print("READING HERE")
 			self.sendCmd(self.NAND_CMD_READ0)
 			self.sendAddr(pageno<<16,self.AddrCycles)
 			self.sendCmd(self.NAND_CMD_READSTART)
@@ -575,13 +590,15 @@ class NandIO:
 		self.Ftdi.write_data(Array('B', [Ftdi.SET_BITS_HIGH,0x1,0x1]))
 		self.Ftdi.write_data(Array('B', [Ftdi.SET_BITS_HIGH,0x0,0x1]))
 
-		data=''
+		#data=''
+		data = bytearray()
 
 		if bad_block and not raw_mode:
 			print(('\nSkipping bad block at %d' % (pageno/self.PagePerBlock)))
 		else:
 			for ch in page:
-				data+=chr(ch)
+				#data+=chr(ch)
+				data.append(ch)
 
 		return data
 
@@ -690,6 +707,8 @@ class NandIO:
 			current_data_offset=0
 			length=0
 
+			self.SetECC(False)
+
 			while page<=end_page and current_data_offset<len(data) and block<self.BlockCount:
 				oob_postfix=b'\xFF' * 13
 				if page%self.PagePerBlock == 0:
@@ -748,8 +767,8 @@ class NandIO:
 					else:
 						sys.stdout.write('Writing %d%% Page: %d/%d Block: %d/%d Speed: %d bytes/s\n' % (progress, page, end_page, block, end_block, length/lapsed_time))
 
-				self.SetECC(False)
-				print(self.GetECC())
+				#self.SetECC(False)
+				#print(self.GetECC())
 
 				self.WritePage(page,page_data)
 
@@ -768,7 +787,7 @@ class NandIO:
 			block+=1
 
 	def EraseBlock(self,start_block, end_block):
-		print(('Erasing Block: 0x%x ~ 0x%x' % (start_block, end_block)))
+		#print(('Erasing Block: 0x%x ~ 0x%x' % (start_block, end_block)))
 		for block in range(start_block, end_block+1, 1):
-			print(("Erasing block", block))
+			#print(("Erasing block", block))
 			self.EraseBlockByPage(block * self.PagePerBlock)

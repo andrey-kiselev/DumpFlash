@@ -123,7 +123,7 @@ class FlashUtil:
 
 			if bad_block_byte == '\xff':
 				return self.CLEAN_BLOCK
-		return self.CLEAN_BLOCK
+		#return self.CLEAN_BLOCK
 		return self.BAD_BLOCK
 
 	def CheckBadBlocks(self):
@@ -145,6 +145,42 @@ class FlashUtil:
 			elif ret==self.ERROR:
 				break
 		print(("\nChecked %d blocks and found %d errors" % (block+1,error_count)))
+
+	def TestBadBlock(self,block):
+		zeros = b'\x00' * (self.io.PageSize + self.io.OOBSize)
+		ones = b'\xFF' * (self.io.PageSize + self.io.OOBSize)
+		self.io.EraseBlock(block,block)
+		for page in range(0,2,1):
+			current_page=block * self.io.PagePerBlock + page
+			self.io.WritePage(current_page, ones)
+			if not bytes(self.io.ReadPage(current_page)) == ones:
+				return self.BAD_BLOCK
+			self.io.WritePage(current_page, zeros)
+			if not bytes(self.io.ReadPage(current_page)) == zeros:
+				return self.BAD_BLOCK
+		return self.CLEAN_BLOCK
+	
+	def TestBadBlocks(self):
+		block = 0
+		error_count=0
+
+		start_block=0
+		end_page=self.io.PageCount
+		for block in range(self.io.BlockCount):
+			ret = self.TestBadBlock(block)
+
+			progress=(block+1)*100.0/self.io.BlockCount
+			
+			#sys.stdout.write('Checking Bad Blocks %d%% Block: %d/%d at offset 0x%x\n' % (progress, block+1, self.io.BlockCount, (block * self.io.BlockSize )))
+
+			if ret==self.BAD_BLOCK:
+				error_count+=1
+				print(("\nBad Block: %d (at physical offset 0x%x)" % (block+1, (block * self.io.BlockSize ))))
+	
+			elif ret==self.ERROR:
+				break
+		print(("\nTested %d blocks and found %d errors" % (block+1,error_count)))
+		
 
 	def ReadPages(self,start_page=-1,end_page=-1,remove_oob=False, filename='', append=False, maximum=0, seq=False, raw_mode=False):	
 		print(('* ReadPages: %d ~ %d' % (start_page, end_page)))
@@ -176,9 +212,9 @@ class FlashUtil:
 		start=time.time()
 		last_time=time.time()
 		for page in range(start_page,end_page,1):
-			print(('page:', page))
+			#print(('page:', page))
 			data=self.io.ReadPage(page,remove_oob)
-			print(('data: %x' % len(data)))
+			#print(('data: %x' % len(data)))
 
 			if filename:
 				if maximum!=0:
@@ -204,8 +240,10 @@ class FlashUtil:
 					progress=(page-start_page) * 100 / (end_page-start_page) 
 					block=page/self.io.PagePerBlock
 					if self.UseAnsi:
+						#pass
 						fmt_str='Reading %3d%% Page: %3d/%3d Block: %3d/%3d Speed: %8d bytes/s\n\033[A'
 					else:
+						#pass
 						fmt_str='Reading %3d%% Page: %3d/%3d Block: %3d/%3d Speed: %8d bytes/s\n'
 						
 					if lapsed_time>0:
@@ -266,9 +304,11 @@ class FlashUtil:
 
 				if lapsed_time>0:
 					if self.UseAnsi:
-						sys.stdout.write('Reading %d%% Page: %d/%d Block: %d/%d Speed: %d bytes/s\n\033[A' % (progress, page, end_page, block, end_block, length/(current-start)))
+						pass
+						#sys.stdout.write('Reading %d%% Page: %d/%d Block: %d/%d Speed: %d bytes/s\n\033[A' % (progress, page, end_page, block, end_block, length/(current-start)))
 					else:
-						sys.stdout.write('Reading %d%% Page: %d/%d Block: %d/%d Speed: %d bytes/s\n' % (progress, page, end_page, block, end_block, length/(current-start)))
+						pass
+						#sys.stdout.write('Reading %d%% Page: %d/%d Block: %d/%d Speed: %d bytes/s\n' % (progress, page, end_page, block, end_block, length/(current-start)))
 
 		if filename:
 			fd.close()
